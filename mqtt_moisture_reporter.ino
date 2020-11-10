@@ -18,7 +18,7 @@
  *  
  * Some configuration parameters can be set via MQTT topic $TOPICROOT/command.
  */
-#define VERSION "20.11.03.1"  //remember to update this after every change! YY.MM.DD.REV
+#define VERSION "20.11.09.1"  //remember to update this after every change! YY.MM.DD.REV
  
 #include <PubSubClient.h> 
 #include <ESP8266WiFi.h>
@@ -120,6 +120,7 @@ void setup()
       }
 
     // ********************* Initialize the MQTT connection
+    mqttClient.setBufferSize(JSON_STATUS_SIZE);
     mqttClient.setServer(settings.mqttBrokerAddress, settings.mqttBrokerPort);
     mqttClient.setCallback(incomingMqttHandler);
     reconnect();  // connect to the MQTT broker
@@ -128,7 +129,8 @@ void setup()
     reading=measure();
     moisture=map(reading, settings.wet, settings.dry,100,0);
     report();
-    doneTimestamp=millis(); //this is to allow the publish to complete before sleeping
+    if (doneTimestamp<millis()) //don't set this if someone else already did
+      doneTimestamp=millis(); //this is to allow the publish to complete before sleeping
     }
   else
     {
@@ -164,7 +166,8 @@ void incomingMqttHandler(char* reqTopic, byte* payload, unsigned int length)
   sprintf(charbuf,"%s",reqTopic);
   char* response;
   char topic[MQTT_TOPIC_SIZE];
-  
+
+  //Request to set the wet value?
   strcpy(topic,settings.mqttTopicRoot);
   strcat(topic,MQTT_TOPIC_SET_WET_REQUEST);
   if (strcmp(charbuf,topic)==0) //then set the wet value
@@ -174,6 +177,7 @@ void incomingMqttHandler(char* reqTopic, byte* payload, unsigned int length)
     saveAndShow();
     }
     
+  //Request to set the dry value?
   strcpy(topic,settings.mqttTopicRoot);
   strcat(topic,MQTT_TOPIC_SET_DRY_REQUEST);
   if (strcmp(charbuf,topic)==0) //then set the dry value
@@ -183,6 +187,7 @@ void incomingMqttHandler(char* reqTopic, byte* payload, unsigned int length)
     saveAndShow();
     }
 
+  //General command?
   strcpy(topic,settings.mqttTopicRoot);
   strcat(topic,MQTT_TOPIC_COMMAND_REQUEST);
   if (strcmp(charbuf,topic)==0) //then we have received a command
@@ -192,7 +197,7 @@ void incomingMqttHandler(char* reqTopic, byte* payload, unsigned int length)
     //if the command is MQTT_PAYLOAD_SETTINGS_COMMAND, send all of the settings
     if (strcmp(charbuf,MQTT_PAYLOAD_SETTINGS_COMMAND)==0)
       {
-      char tempbuf[15]; //for converting numbers to strings
+      char tempbuf[35]; //for converting numbers to strings
       char jsonStatus[JSON_STATUS_SIZE];
       
       strcpy(jsonStatus,"{");
@@ -217,6 +222,14 @@ void incomingMqttHandler(char* reqTopic, byte* payload, unsigned int length)
       strcat(jsonStatus,"\", \"dry\":\"");
       sprintf(tempbuf,"%d",settings.dry);
       strcat(jsonStatus,tempbuf);
+      strcat(jsonStatus,"\", \"sleepTime\":\"");
+      sprintf(tempbuf,"%d",settings.sleepTime);
+      strcat(jsonStatus,tempbuf);
+      strcat(jsonStatus,"\", \"mqttClientId\":\"");
+      strcat(jsonStatus,settings.mqttClientId);
+      strcat(jsonStatus,"\", \"debug\":\"");
+      strcat(jsonStatus,settings.debug?"true":"false");
+
       strcat(jsonStatus,"\"}");
       response=jsonStatus;
       }
@@ -252,8 +265,15 @@ void incomingMqttHandler(char* reqTopic, byte* payload, unsigned int length)
     strcpy(topic,settings.mqttTopicRoot);
     strcat(topic,charbuf); //the incoming command becomes the topic suffix
   
+    doneTimestamp=millis(); //this will keep us from sleeping before responding
+
     if (!publish(topic,response))
-      Serial.println("************ Failure when publishing status response!");
+      {
+      int code=mqttClient.state();
+      Serial.print("************ Failure ");
+      Serial.print(code);
+      Serial.println(" when publishing command response!");
+      }
     }
   if (rebootScheduled)
     {
@@ -274,7 +294,7 @@ void saveAndShow()
   strcat(topic,MQTT_TOPIC_COMMAND_REQUEST); //Send ourself the command to display settings
 
   if (!publish(topic,MQTT_PAYLOAD_SETTINGS_COMMAND))
-    Serial.println("************ Failure when publishing status response!");
+    Serial.println("************ Failure when publishing show settings response!");
   }
 
 void loop()
@@ -298,7 +318,7 @@ void loop()
     Serial.print(settings.sleepTime);
     Serial.println(" seconds");
     ESP.deepSleep(settings.sleepTime*1000000);
-    } 
+    }
   }
 
 // Read the moisture 10 times and return the dominant value
