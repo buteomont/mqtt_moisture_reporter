@@ -15,8 +15,6 @@
 #define MQTT_TOPIC_PERIOD "period"
 #define MQTT_CLIENT_ID_ROOT "UltrasonicDetector"
 #define MQTT_TOPIC_COMMAND_REQUEST "command"
-#define MQTT_TOPIC_SET_WET_REQUEST "setwet"
-#define MQTT_TOPIC_SET_DRY_REQUEST "setdry"
 #define MQTT_PAYLOAD_SETTINGS_COMMAND "settings" //show all user accessable settings
 #define MQTT_PAYLOAD_RESET_PULSE_COMMAND "resetPulseCounter" //reset the pulse counter to zero
 #define MQTT_PAYLOAD_REBOOT_COMMAND "reboot" //reboot the controller

@@ -62,10 +62,12 @@ unsigned long doneTimestamp=0; //used to allow publishes to complete before slee
 
 char* clientId = settings.mqttClientId;
 
+//ADC_MODE(ADC_VCC); //so we can use the ADC to measure the battery voltage
+
 void setup() 
   {
   pinMode(LED_BUILTIN,OUTPUT);// The blue light on the board shows activity
-
+  
   Serial.begin(115200);
   Serial.setTimeout(10000);
   Serial.println();
@@ -167,26 +169,6 @@ void incomingMqttHandler(char* reqTopic, byte* payload, unsigned int length)
   char* response;
   char topic[MQTT_TOPIC_SIZE];
 
-  //Request to set the wet value?
-  strcpy(topic,settings.mqttTopicRoot);
-  strcat(topic,MQTT_TOPIC_SET_WET_REQUEST);
-  if (strcmp(charbuf,topic)==0) //then set the wet value
-    {
-    sprintf(charbuf,"%s",payload);
-    settings.wet=atoi(charbuf);
-    saveAndShow();
-    }
-    
-  //Request to set the dry value?
-  strcpy(topic,settings.mqttTopicRoot);
-  strcat(topic,MQTT_TOPIC_SET_DRY_REQUEST);
-  if (strcmp(charbuf,topic)==0) //then set the dry value
-    {
-    sprintf(charbuf,"%s",payload);
-    settings.dry=atoi(charbuf);
-    saveAndShow();
-    }
-
   //General command?
   strcpy(topic,settings.mqttTopicRoot);
   strcat(topic,MQTT_TOPIC_COMMAND_REQUEST);
@@ -254,6 +236,10 @@ void incomingMqttHandler(char* reqTopic, byte* payload, unsigned int length)
       response=tmp;
       rebootScheduled=true;
       }
+    else if (processCommand(charbuf))
+      {
+      response="OK";
+      }
     else
       {
       char badCmd[18];
@@ -314,6 +300,9 @@ void loop()
   else if (settingsAreValid                        //setup has been done and
           && millis()-doneTimestamp>PUBLISH_DELAY) //waited long enough for report to finish
     {
+//    int vcc=ESP.getVcc(); //can't use the ADC externally if we do this
+//    Serial.println(vcc);
+  
     Serial.print("Sleeping for ");
     Serial.print(settings.sleepTime);
     Serial.println(" seconds");
@@ -436,16 +425,6 @@ void reconnect()
       strcat(topic,MQTT_TOPIC_COMMAND_REQUEST);
       int subok=mqttClient.subscribe(topic);
       showSub(topic);
-      
-      strcpy(topic,settings.mqttTopicRoot);
-      strcat(topic,MQTT_TOPIC_SET_WET_REQUEST);
-      subok=mqttClient.subscribe(topic);
-      showSub(topic);
-      
-      strcpy(topic,settings.mqttTopicRoot);
-      strcat(topic,MQTT_TOPIC_SET_DRY_REQUEST);
-      subok=mqttClient.subscribe(topic);
-      showSub(topic);
       }
     else 
       {
@@ -492,7 +471,7 @@ String getConfigCommand()
   else return "";
   }
 
-void processCommand(String cmd)
+bool processCommand(String cmd)
   {
   const char *str=cmd.c_str();
   char *val=NULL;
@@ -507,8 +486,7 @@ void processCommand(String cmd)
   if (nme==NULL || val==NULL || strlen(nme)==0 || strlen(val)==0)
     {
     showSettings();
-    
-    return;  
+    return false;   //bad or missing command
     }
   else if (strcmp(nme,"broker")==0)
     {
@@ -573,9 +551,12 @@ void processCommand(String cmd)
     delay(2000);
     ESP.restart();
     }
-  else
+  else //invalid command
+    {
     showSettings();
-  return;
+    return false;
+    }
+  return true;
   }
 
 void initializeSettings()
