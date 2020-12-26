@@ -18,8 +18,8 @@
  *  
  * Some configuration parameters can be set via MQTT topic $TOPICROOT/command.
  */
-#define VERSION "20.11.09.1"  //remember to update this after every change! YY.MM.DD.REV
- 
+#define VERSION "20.11.13.1"  //remember to update this after every change! YY.MM.DD.REV
+
 #include <PubSubClient.h> 
 #include <ESP8266WiFi.h>
 #include <EEPROM.h>
@@ -61,8 +61,6 @@ int reading=0; //the last value read from the sensor
 unsigned long doneTimestamp=0; //used to allow publishes to complete before sleeping
 
 char* clientId = settings.mqttClientId;
-
-//ADC_MODE(ADC_VCC); //so we can use the ADC to measure the battery voltage
 
 void setup() 
   {
@@ -253,7 +251,7 @@ void incomingMqttHandler(char* reqTopic, byte* payload, unsigned int length)
   
     doneTimestamp=millis(); //this will keep us from sleeping before responding
 
-    if (!publish(topic,response))
+    if (!publish(topic,response,false)) //do not retain
       {
       int code=mqttClient.state();
       Serial.print("************ Failure ");
@@ -279,7 +277,7 @@ void saveAndShow()
   strcpy(topic,settings.mqttTopicRoot);
   strcat(topic,MQTT_TOPIC_COMMAND_REQUEST); //Send ourself the command to display settings
 
-  if (!publish(topic,MQTT_PAYLOAD_SETTINGS_COMMAND))
+  if (!publish(topic,MQTT_PAYLOAD_SETTINGS_COMMAND,false)) //do not retain
     Serial.println("************ Failure when publishing show settings response!");
   }
 
@@ -299,10 +297,7 @@ void loop()
     } 
   else if (settingsAreValid                        //setup has been done and
           && millis()-doneTimestamp>PUBLISH_DELAY) //waited long enough for report to finish
-    {
-//    int vcc=ESP.getVcc(); //can't use the ADC externally if we do this
-//    Serial.println(vcc);
-  
+    {  
     Serial.print("Sleeping for ");
     Serial.print(settings.sleepTime);
     Serial.println(" seconds");
@@ -395,6 +390,9 @@ void showSettings()
   Serial.println(")");
   Serial.print("MQTT Client ID is ");
   Serial.println(settings.mqttClientId);
+  Serial.print("debug=1|0 (");
+  Serial.print(settings.debug);
+  Serial.println(")");
   Serial.println("\n*** Use \"factorydefaults=yes\" to reset all settings ***\n");
   }
 
@@ -403,7 +401,7 @@ void showSettings()
  */
 void reconnect() 
   {
-  mqttClient.loop(); //This has to happen every so often or we get disconnected for some reason
+  mqttClient.loop(); //This has to happen every so often or we can't receive messages
   // Loop until we're reconnected
   while (!mqttClient.connected()) 
     {
@@ -413,7 +411,7 @@ void reconnect()
       }
     
     // Attempt to connect
-    if (mqttClient.connect(clientId,settings.mqttUsername,settings.mqttPassword))
+    if (mqttClient.connect(settings.mqttClientId,settings.mqttUsername,settings.mqttPassword))
       {
       if (settings.debug)
         {
@@ -602,7 +600,7 @@ void report()
   strcpy(topic,settings.mqttTopicRoot);
   strcat(topic,MQTT_TOPIC_READING);
   sprintf(value,"%d",reading); 
-  success=publish(topic,value);
+  success=publish(topic,value,true); //retain
   if (!success)
     Serial.println("************ Failed publishing sensor reading!");
 
@@ -610,17 +608,17 @@ void report()
   strcpy(topic,settings.mqttTopicRoot);
   strcat(topic,MQTT_TOPIC_MOISTURE);
   sprintf(value,"%d",moisture); //item within range window
-  success=publish(topic,value);
+  success=publish(topic,value,true); //retain
   if (!success)
     Serial.println("************ Failed publishing moisture value!");
   }
 
-boolean publish(char* topic, char* reading)
+boolean publish(char* topic, char* reading, bool retain)
   {
   Serial.print(topic);
   Serial.print(" ");
   Serial.println(reading);
-  return mqttClient.publish(topic,reading);
+  return mqttClient.publish(topic,reading,retain);
   }
 
   
